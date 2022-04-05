@@ -77,11 +77,11 @@ int main(int argc, const char **argv)
         name = strtok_r(nullptr, " ", &save);
         if (buffer[0] == '0')
         {
-          int idx = tryFindUser(std::string(name));
+          int idx = tryFindUser(name);
           if (idx == -1)
           {
             printf("Add new user: %s\n", name);
-            info.push_back({ std::string(name), from, addrlen });
+            info.push_back({ name, from, addrlen });
           }
           else
           {
@@ -93,7 +93,7 @@ int main(int argc, const char **argv)
         else if (buffer[0] == '1')
         {
           printf("From: %s get message: %s \n", name, save);
-          sendMessageFromUser(sfd, std::string(name), save);
+          sendMessageFromUser(sfd, name, save);
         }
         else if (buffer[0] == '2')
         {
@@ -103,12 +103,7 @@ int main(int argc, const char **argv)
         {
           printf("Read invalid message: %s\n", buffer);
         }
-
-        //printf("%s %d \n", buffer, addrlen); // assume that buffer is a string
-        //memmove(buffer, buffer + 2, strlen(buffer));
-        //printf("new buffer: %s\n", buffer);
       }
-
     }
   }
   return 0;

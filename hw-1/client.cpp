@@ -63,6 +63,13 @@ int main(int argc, const char **argv)
 
   while (true)
   {
+    fd_set readSet;
+    FD_ZERO(&readSet);
+    FD_SET(sfd, &readSet);
+
+    timeval timeout = { 0, 100000 }; // 100 ms
+    select(sfd + 1, &readSet, NULL, NULL, &timeout);
+
     uint32_t curTime = time(nullptr);
     if (curTime - lastSendTime > 0)
     {
@@ -98,13 +105,16 @@ int main(int argc, const char **argv)
         std::cout << hstrerror(errno) << std::endl;
     }
 
-    constexpr size_t buf_size = 1000;
-    static char buffer[buf_size];
-    std::memset(buffer, 0, buf_size);
-    ssize_t numBytes = recvfrom(sfd, buffer, buf_size - 1, 0, nullptr, nullptr);
-    if (numBytes > 0)
+    if (FD_ISSET(sfd, &readSet))
     {
-      printf("%s\n", buffer);
+      constexpr size_t buf_size = 1000;
+      static char buffer[buf_size];
+      std::memset(buffer, 0, buf_size);
+      ssize_t numBytes = recvfrom(sfd, buffer, buf_size - 1, 0, nullptr, nullptr);
+      if (numBytes > 0)
+      {
+        printf("%s\n", buffer);
+      }
     }
   }
   return 0;
