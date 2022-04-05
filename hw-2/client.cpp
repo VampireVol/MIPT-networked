@@ -112,11 +112,6 @@ int main(int argc, const char **argv)
     if (connected)
     {
       uint32_t curTime = enet_time_get();
-      if (curTime - lastFragmentedSendTime > 10000 && serverPeer)
-      {
-        lastFragmentedSendTime = curTime;
-        //send_fragmented_packet(lobbyPeer);
-      }
       if (curTime - lastMicroSendTime > 1000 && serverPeer)
       {
         lastMicroSendTime = curTime;
