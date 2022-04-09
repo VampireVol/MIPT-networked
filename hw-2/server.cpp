@@ -35,7 +35,7 @@ void sent_packet_to_connected_peers(ENetPeer *peers, enet_uint32 flags, F messag
   std::string msg = messageCompose(connectedPeers);
   printf("Send message to connected users: '%s'\n", msg.c_str());
   ENetPacket *packet = enet_packet_create(msg.c_str(), msg.size() + 1, flags);
-  for (auto peer : connectedPeers)
+  for (const auto &peer : connectedPeers)
   {
     enet_peer_send(peer, flags == ENET_PACKET_FLAG_RELIABLE ? 0 : 1, packet);
   }
@@ -67,7 +67,7 @@ int main(int argc, const char **argv)
 
   auto usersListMessage = [](const std::vector<ENetPeer *> &connectedPeers) {
     std::string msg = "Users list: ";
-    for (auto peer : connectedPeers)
+    for (const auto &peer : connectedPeers)
     {
       UserInfo* info = (UserInfo *) peer->data;
       msg += info->name + " ";
@@ -76,7 +76,7 @@ int main(int argc, const char **argv)
   };
   auto pingMessage = [](const std::vector<ENetPeer *> &connectedPeers) {
     std::string msg = "Ping list: ";
-    for (auto peer : connectedPeers)
+    for (const auto &peer : connectedPeers)
     {
       UserInfo* info = (UserInfo *) peer->data;
       msg += info->name + ": " + std::to_string(peer->roundTripTime) + "ms ";
@@ -144,10 +144,14 @@ int main(int argc, const char **argv)
     }
   }
 
-  for (int i = 0; i < server->connectedPeers; ++i)
+  for (int i = 0; i < MAX_PEERS; ++i)
   {
-    UserInfo* ptr = (UserInfo *) server->peers[i].data;
-    delete ptr;
+    if (server->peers[i].state == ENET_PEER_STATE_CONNECTED)
+    {
+      UserInfo* ptr = (UserInfo *) server->peers[i].data;
+      if (ptr)
+        delete ptr;
+    }
   }
   enet_host_destroy(server);
 
