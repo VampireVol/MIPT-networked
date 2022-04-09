@@ -3,23 +3,6 @@
 #include <cstring>
 #include <string>
 
-void send_fragmented_packet(ENetPeer *peer)
-{
-  const char *baseMsg = "Stay awhile and listen. ";
-  const size_t msgLen = strlen(baseMsg);
-
-  const size_t sendSize = 2500;
-  char *hugeMessage = new char[sendSize];
-  for (size_t i = 0; i < sendSize; ++i)
-    hugeMessage[i] = baseMsg[i % msgLen];
-  hugeMessage[sendSize-1] = '\0';
-
-  ENetPacket *packet = enet_packet_create(hugeMessage, sendSize, ENET_PACKET_FLAG_RELIABLE);
-  enet_peer_send(peer, 0, packet);
-
-  delete[] hugeMessage;
-}
-
 void send_time_packet(ENetPeer *peer, uint32_t time)
 {
   const std::string msg = std::to_string(time + rand() % 200);

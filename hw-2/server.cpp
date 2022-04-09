@@ -2,6 +2,10 @@
 #include <iostream>
 #include <cstring>
 #include <string>
+#include <vector>
+#include <algorithm>
+
+const int MAX_PEERS = 32;
 
 struct UserInfo
 {
@@ -16,54 +20,24 @@ UserInfo *get_user_info()
   return new UserInfo({ gid, "player" + std::to_string(gid)});
 }
 
-void sent_user_info_packet(ENetPeer *peer, const UserInfo *info)
+template<typename F>
+void sent_packet_to_connected_peers(ENetPeer *peers, enet_uint32 flags, F messageCompose)
 {
-  const std::string msg = "Name: " + info->name + " id: " + std::to_string(info->id);
-  ENetPacket *packet = enet_packet_create(msg.c_str(), msg.size() + 1, ENET_PACKET_FLAG_RELIABLE);
-  enet_peer_send(peer, 1, packet);
-}
-
-void sent_users_list_packet(ENetPeer *peers, uint32_t peersCnt)
-{
-  std::string msg = "Users list: ";
-  for (int i = 0; i < peersCnt; ++i)
+  std::vector<ENetPeer *> connectedPeers;
+  for (int i = 0; i < MAX_PEERS; ++i)
   {
-    UserInfo* info = (UserInfo *) peers[i].data;
-    msg += info->name + " ";
+    if (peers[i].state == ENET_PEER_STATE_CONNECTED)
+    {
+      connectedPeers.push_back(&peers[i]);
+    }
   }
-  ENetPacket *packet = enet_packet_create(msg.c_str(), msg.size() + 1, ENET_PACKET_FLAG_RELIABLE);
+
+  std::string msg = messageCompose(connectedPeers);
   printf("Send message to connected users: '%s'\n", msg.c_str());
-  for (int i = 0; i < peersCnt; ++i)
+  ENetPacket *packet = enet_packet_create(msg.c_str(), msg.size() + 1, flags);
+  for (auto peer : connectedPeers)
   {
-    enet_peer_send(&peers[i], 1, packet);
-  }
-}
-
-void send_time_packet(ENetPeer *peers, uint32_t peersCnt, uint32_t time)
-{
-  const std::string msg = "Server time: " + std::to_string(time + rand() % 200);
-  printf("Send message to connected users: '%s'\n", msg.c_str());
-  ENetPacket *packet = enet_packet_create(msg.c_str(), msg.size() + 1, ENET_PACKET_FLAG_UNSEQUENCED);
-  for (int i = 0; i < peersCnt; ++i)
-  {
-    enet_peer_send(&peers[i], 1, packet);
-  }
-}
-
-void send_ping_list_packet(ENetPeer *peers, uint32_t peersCnt)
-{
-  std::string msg = "Ping list: ";
-  for (int i = 0; i < peersCnt; ++i)
-  {
-    UserInfo* info = (UserInfo *) peers[i].data;
-    msg += info->name + ": " + std::to_string(peers[i].roundTripTime) + "ms ";
-  }
-  printf("Send message to connected users: '%s'\n", msg.c_str());
-
-  ENetPacket *packet = enet_packet_create(msg.c_str(), msg.size() + 1, ENET_PACKET_FLAG_UNSEQUENCED);
-  for (int i = 0; i < peersCnt; ++i)
-  {
-    enet_peer_send(&peers[i], 1, packet);
+    enet_peer_send(peer, flags == ENET_PACKET_FLAG_RELIABLE ? 0 : 1, packet);
   }
 }
 
@@ -79,7 +53,7 @@ int main(int argc, const char **argv)
   address.host = ENET_HOST_ANY;
   address.port = 10007;
 
-  ENetHost *server = enet_host_create(&address, 32, 2, 0, 0);
+  ENetHost *server = enet_host_create(&address, MAX_PEERS, 2, 0, 0);
 
   if (!server)
   {
@@ -90,6 +64,26 @@ int main(int argc, const char **argv)
   uint32_t startTime = enet_time_get();
   uint32_t lastTimeSendTime = startTime;
   uint32_t lastPingSendTime = startTime;
+
+  auto usersListMessage = [](const std::vector<ENetPeer *> &connectedPeers) {
+    std::string msg = "Users list: ";
+    for (auto peer : connectedPeers)
+    {
+      UserInfo* info = (UserInfo *) peer->data;
+      msg += info->name + " ";
+    }
+    return msg;
+  };
+  auto pingMessage = [](const std::vector<ENetPeer *> &connectedPeers) {
+    std::string msg = "Ping list: ";
+    for (auto peer : connectedPeers)
+    {
+      UserInfo* info = (UserInfo *) peer->data;
+      msg += info->name + ": " + std::to_string(peer->roundTripTime) + "ms ";
+    }
+    return msg;
+  };
+
   while (true)
   {
     ENetEvent event;
@@ -98,19 +92,33 @@ int main(int argc, const char **argv)
       switch (event.type)
       {
       case ENET_EVENT_TYPE_CONNECT:
+      {
         printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
         event.peer->data = get_user_info();
-        for (int i = 0; i < server->connectedPeers - 1; ++i)
-        {
-          sent_user_info_packet(&server->peers[i], (UserInfo *)event.peer->data);
-        }
-        sent_users_list_packet(server->peers, server->connectedPeers);
+        auto newUserMessage = [event](std::vector<ENetPeer *> &connectedPeers) {
+          UserInfo* info = (UserInfo *) event.peer->data;
+          std::string msg = "New user connected: Name: " + info->name + " id: " + std::to_string(info->id);
+          connectedPeers.erase(std::remove_if(connectedPeers.begin(), connectedPeers.end(),
+                                              [event](ENetPeer *peer) { return peer == event.peer; }),
+                               connectedPeers.end());
+          return msg;
+        };
+        sent_packet_to_connected_peers(server->peers, ENET_PACKET_FLAG_RELIABLE, newUserMessage);
+        sent_packet_to_connected_peers(server->peers, ENET_PACKET_FLAG_RELIABLE, usersListMessage);
         break;
+      }
       case ENET_EVENT_TYPE_RECEIVE:
       {
         UserInfo *info = (UserInfo *) event.peer->data;
         printf("From %s. Packet received '%s'\n", info->name.c_str(), event.packet->data);
         enet_packet_destroy(event.packet);
+        break;
+      }
+      case ENET_EVENT_TYPE_DISCONNECT:
+      {
+        UserInfo *info = (UserInfo *) event.peer->data;
+        printf("User %s was disconnected\n", info->name.c_str());
+        delete info;
         break;
       }
       default:
@@ -123,12 +131,15 @@ int main(int argc, const char **argv)
       if (curTime - lastTimeSendTime > 10000)
       {
         lastTimeSendTime = curTime;
-        send_time_packet(server->peers, server->connectedPeers, curTime);
+        auto timeMessage = [curTime](std::vector<ENetPeer *> connectedPeers) {
+          return "Server time: " + std::to_string(curTime + rand() % 200);
+        };
+        sent_packet_to_connected_peers(server->peers, ENET_PACKET_FLAG_RELIABLE, timeMessage);
       }
       if (curTime - lastPingSendTime > 5000)
       {
         lastPingSendTime = curTime;
-        send_ping_list_packet(server->peers, server->connectedPeers);
+        sent_packet_to_connected_peers(server->peers, ENET_PACKET_FLAG_UNSEQUENCED, pingMessage);
       }
     }
   }
