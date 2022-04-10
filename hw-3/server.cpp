@@ -5,9 +5,45 @@
 #include <stdlib.h>
 #include <vector>
 #include <map>
+#include <math.h>
+
+struct Point2
+{
+  float x;
+  float y;
+};
 
 static std::vector<Entity> entities;
 static std::map<uint16_t, ENetPeer*> controlledMap;
+static std::vector<Point2> moveTo;
+
+const int WIGHT = 16;
+const int HEIGHT = 8;
+const int AI_SIZE = 10;
+
+uint32_t gen_color()
+{
+  return 0xff000000 +
+         0x00440000 * (rand() % 5) +
+         0x00004400 * (rand() % 5) +
+         0x00000044 * (rand() % 5);
+}
+
+uint16_t gen_eid()
+{
+  // find max eid
+  uint16_t maxEid = entities.empty() ? invalid_entity : entities[0].eid;
+  for (const Entity &e : entities)
+    maxEid = std::max(maxEid, e.eid);
+  return maxEid + 1;
+}
+
+Point2 gen_point()
+{
+  float x = ((rand() % 100) / 50.0f - 1) * WIGHT;
+  float y = ((rand() % 100) / 50.0f - 1) * HEIGHT;
+  return { x, y };
+}
 
 void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 {
@@ -15,18 +51,13 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
   for (const Entity &ent : entities)
     send_new_entity(peer, ent);
 
-  // find max eid
-  uint16_t maxEid = entities.empty() ? invalid_entity : entities[0].eid;
-  for (const Entity &e : entities)
-    maxEid = std::max(maxEid, e.eid);
-  uint16_t newEid = maxEid + 1;
-  uint32_t color = 0xff000000 +
-                   0x00440000 * (rand() % 5) +
-                   0x00004400 * (rand() % 5) +
-                   0x00000044 * (rand() % 5);
+
+  uint16_t newEid = gen_eid();
+  uint32_t color = gen_color();
   float x = (rand() % 4) * 2.f;
   float y = (rand() % 4) * 2.f;
-  Entity ent = {color, x, y, newEid};
+  float r = (rand() % 10 + 1) * 0.1f;
+  Entity ent = {color, x, y, r, newEid};
   entities.push_back(ent);
 
   controlledMap[newEid] = peer;
@@ -42,18 +73,64 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 void on_state(ENetPacket *packet)
 {
   uint16_t eid = invalid_entity;
-  float x = 0.f; float y = 0.f;
-  deserialize_entity_state(packet, eid, x, y);
+  float x = 0.f; float y = 0.f; float r = 0.f;
+  deserialize_entity_state(packet, eid, x, y, r);
   for (Entity &e : entities)
     if (e.eid == eid)
     {
       e.x = x;
       e.y = y;
+      e.r = r;
     }
+}
+
+void create_ai()
+{
+  for (int i = 0; i < AI_SIZE; ++i)
+  {
+    Point2 start = gen_point();
+    Point2 next = gen_point();
+    float r = (rand() % 10 + 1) * 0.1f;
+    uint32_t color = gen_color();
+    uint16_t newEid = gen_eid();
+    Entity ent = {color, start.x, start.y, r, newEid};
+    entities.push_back(ent);
+    moveTo.push_back(next);
+  }
+}
+
+void update_ai(float dt)
+{
+  //printf("dt %f\n", dt);
+  for (int i = 0; i < AI_SIZE; ++i)
+  {
+    Entity e = entities[i];
+    Point2 t = moveTo[i];
+    float speed = 0.1f / (e.r);
+    float dx = t.x - e.x;
+    float dy = t.y - e.y;
+    float dist = sqrt(dx * dx + dy * dy);
+    if (dist < 1.f)
+    {
+      moveTo[i] = gen_point();
+      t = moveTo[i];
+      dx = e.x - t.x;
+      dy = e.y - t.y;
+      dist = sqrt(dx * dx + dy * dy);
+    }
+    entities[i].x += dx / dist * speed * dt;
+    entities[i].y += dy / dist * speed * dt;
+  }
+}
+
+void collide()
+{
+
 }
 
 int main(int argc, const char **argv)
 {
+  create_ai();
   if (enet_initialize() != 0)
   {
     printf("Cannot init ENet");
@@ -72,6 +149,9 @@ int main(int argc, const char **argv)
     return 1;
   }
 
+  uint32_t start = enet_time_get();
+  uint32_t last = start;
+  float dt = 0.0f;
   while (true)
   {
     ENetEvent event;
@@ -103,10 +183,14 @@ int main(int argc, const char **argv)
       for (size_t i = 0; i < server->peerCount; ++i)
       {
         ENetPeer *peer = &server->peers[i];
-        if (controlledMap[e.eid] != peer)
-          send_snapshot(peer, e.eid, e.x, e.y);
+        if (peer->state == ENET_PEER_STATE_CONNECTED && controlledMap[e.eid] != peer)
+          send_snapshot(peer, e.eid, e.x, e.y, e.r);
       }
-    usleep(100000);
+    update_ai(dt);
+    start = enet_time_get();
+    dt = (start - last) / 100.0f;
+    last = start;
+    usleep(1000);
   }
 
   enet_host_destroy(server);

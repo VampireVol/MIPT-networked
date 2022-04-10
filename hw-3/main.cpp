@@ -40,14 +40,15 @@ void on_set_controlled_entity(ENetPacket *packet)
 void on_snapshot(ENetPacket *packet)
 {
   uint16_t eid = invalid_entity;
-  float x = 0.f; float y = 0.f;
-  deserialize_snapshot(packet, eid, x, y);
+  float x = 0.f; float y = 0.f; float r = 0.f;
+  deserialize_snapshot(packet, eid, x, y, r);
   // TODO: Direct adressing, of course!
   for (Entity &e : entities)
     if (e.eid == eid)
     {
       e.x = x;
       e.y = y;
+      e.r = r;
     }
 }
 
@@ -136,12 +137,14 @@ int main(int argc, const char **argv)
       for (Entity &e : entities)
         if (e.eid == my_entity)
         {
+          float speed = 1.f / (e.r * e.r);
+          speed = (left || right) && (up || down) ? speed / sqrt(2) : speed;
           // Update
-          e.x += ((left ? -dt : 0.f) + (right ? +dt : 0.f)) * 10.f;
-          e.y += ((up ? +dt : 0.f) + (down ? -dt : 0.f)) * 10.f;
+          e.x += ((left ? -dt : 0.f) + (right ? +dt : 0.f)) * speed;
+          e.y += ((up ? +dt : 0.f) + (down ? -dt : 0.f)) * speed;
 
           // Send
-          send_entity_state(serverPeer, my_entity, e.x, e.y);
+          send_entity_state(serverPeer, my_entity, e.x, e.y, e.r);
         }
     }
 
@@ -164,7 +167,9 @@ int main(int argc, const char **argv)
       dde.push();
 
         dde.setColor(e.color);
-        dde.drawQuad(bx::Vec3(0.f,0.f,1.f), bx::Vec3(e.x, e.y, -0.01f), 1.f);
+        dde.draw(bx::Sphere({ bx::Vec3(e.x, e.y, -0.01f), e.r }));
+        //dde.drawCircle(bx::Vec3(0.0f, 0.0f, 1.0f), bx::Vec3(e.x, e.y, -0.01f), 1.0f);
+        //dde.drawQuad(bx::Vec3(0.f,0.f,1.f), bx::Vec3(e.x, e.y, -0.01f), 1.f);
 
       dde.pop();
     }
