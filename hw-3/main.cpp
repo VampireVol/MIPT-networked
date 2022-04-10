@@ -77,8 +77,8 @@ int main(int argc, const char **argv)
     return 1;
   }
 
-  int width = 1920;
-  int height = 1080;
+  int width = 1280;
+  int height = 720;
   if (!app_init(width, height))
     return 1;
   ddInit();

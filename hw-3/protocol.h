@@ -1,6 +1,8 @@
 #pragma once
 #include <enet/enet.h>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include "entity.h"
 
 enum MessageType : uint8_t
@@ -10,6 +12,51 @@ enum MessageType : uint8_t
   E_SERVER_TO_CLIENT_SET_CONTROLLED_ENTITY,
   E_CLIENT_TO_SERVER_STATE,
   E_SERVER_TO_CLIENT_SNAPSHOT
+};
+
+class BitStream {
+public:
+  explicit BitStream(uint8_t *data, size_t lenght) : data(data), lenght(lenght), curLenght(0)
+  {
+    this->data += sizeof(uint8_t);
+  }
+
+  explicit BitStream(uint8_t* data) : data(data), lenght(0), curLenght(0) {}
+
+  template<typename T>
+  bool Read(T* ptr)
+  {
+    if (CheckLenght(sizeof(T)))
+    {
+      memcpy(ptr, data, sizeof(T)); 
+      data += sizeof(T);
+      return true;
+    }
+    else
+    {
+      printf("Error out of bound!");
+      return false;
+    }    
+  }
+
+  template <typename T>
+  void Write(T* ptr)
+  {
+    memcpy(data, ptr, sizeof(T));
+    data += sizeof(T);
+  }
+
+  template <typename T>
+  void Write(T val)
+  {
+    *data = val;
+    data += sizeof(T);
+  }
+private:
+  bool CheckLenght(size_t addLenght);
+  uint8_t *data;
+  size_t lenght;
+  size_t curLenght;
 };
 
 void send_join(ENetPeer *peer);

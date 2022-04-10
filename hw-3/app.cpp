@@ -33,7 +33,7 @@ static void glfw_mouseCallback(GLFWwindow* window, int button, int action, int m
     return;
   double x, y;
   glfwGetCursorPos(window, &x, &y);
-  mcb(button, x, y);
+  //mcb(button, x, y);
 }
 
 bool app_init(int width, int height)
