@@ -9,5 +9,7 @@ struct Entity
   float y = 0.f;
   float r = 0.f;
   uint16_t eid = invalid_entity;
+
+  float GetSpeed() { return 10.f / (2.f + r * r); }
 };
 

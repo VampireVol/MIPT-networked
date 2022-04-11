@@ -56,18 +56,14 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
   for (const Entity &ent : entities)
     send_new_entity(peer, ent);
 
-
   uint16_t newEid = gen_eid();
   uint32_t color = gen_color();
   Point2 p = gen_point();
-  float x = (rand() % 4) * 2.f;
-  float y = (rand() % 4) * 2.f;
   float r = gen_r();
   Entity ent = {color, p.x, p.y, r, newEid};
   entities.push_back(ent);
 
   controlledMap[newEid] = peer;
-
 
   // send info about new entity to everyone
   for (size_t i = 0; i < host->peerCount; ++i)
@@ -107,12 +103,11 @@ void create_ai()
 
 void update_ai(float dt)
 {
-  //printf("dt %f\n", dt);
   for (int i = 0; i < AI_SIZE; ++i)
   {
     Entity e = entities[i];
     Point2 t = moveTo[i];
-    float speed = 10.f / (2.f + e.r * e.r);
+    float speed = e.GetSpeed();
     float dx = t.x - e.x;
     float dy = t.y - e.y;
     float dist = sqrt(dx * dx + dy * dy);
@@ -131,6 +126,32 @@ void update_ai(float dt)
 
 void collide()
 {
+  for (auto &e1 : entities)
+  {
+    for (auto &e2 : entities)
+    {
+      if (e1.eid == e2.eid)
+        continue;
+      if ((abs(e1.x - e2.x) < (e1.r + e2.r)) && (abs(e1.y - e2.y) < (e1.r + e2.r)))
+      {
+        Entity &eMin = e1.r < e2.r ? e1 : e2;
+        Entity &eMax = e1.r < e2.r ? e2 : e1;
+        eMax.r += 0.5f * eMin.r;
+        Point2 respawn = gen_point();
+        eMin.x = respawn.x;
+        eMin.y = respawn.y;
+        eMin.r = std::max(0.5f * eMin.r, 0.001f);
+        if (auto search = controlledMap.find(e1.eid); search != controlledMap.end())
+        {
+          send_snapshot(search->second, e1.eid, e1.x, e1.y, e1.r);
+        }
+        if (auto search = controlledMap.find(e2.eid); search != controlledMap.end())
+        {
+          send_snapshot(search->second, e2.eid, e2.x, e2.y, e2.r);
+        }
+      }
+    }
+  }
 
 }
 
@@ -189,10 +210,12 @@ int main(int argc, const char **argv)
       for (size_t i = 0; i < server->peerCount; ++i)
       {
         ENetPeer *peer = &server->peers[i];
-        if (peer->state == ENET_PEER_STATE_CONNECTED && controlledMap[e.eid] != peer)
+        auto search = controlledMap.find(e.eid);
+        if (peer->state == ENET_PEER_STATE_CONNECTED && search->second != peer)
           send_snapshot(peer, e.eid, e.x, e.y, e.r);
       }
     update_ai(dt);
+    collide();
     start = enet_time_get();
     dt = (start - last) / 1000.0f;
     last = start;

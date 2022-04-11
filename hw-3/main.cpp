@@ -137,7 +137,7 @@ int main(int argc, const char **argv)
       for (Entity &e : entities)
         if (e.eid == my_entity)
         {
-          float speed = 10.f / (2.f + e.r * e.r);
+          float speed = e.GetSpeed();
           speed = (left || right) && (up || down) ? speed / sqrt(2) : speed;
           // Update
           e.x += ((left ? -dt : 0.f) + (right ? +dt : 0.f)) * speed;
@@ -168,8 +168,6 @@ int main(int argc, const char **argv)
 
         dde.setColor(e.color);
         dde.draw(bx::Sphere({ bx::Vec3(e.x, e.y, -0.01f), e.r }));
-        //dde.drawCircle(bx::Vec3(0.0f, 0.0f, 1.0f), bx::Vec3(e.x, e.y, -0.01f), 1.0f);
-        //dde.drawQuad(bx::Vec3(0.f,0.f,1.f), bx::Vec3(e.x, e.y, -0.01f), 1.f);
 
       dde.pop();
     }
