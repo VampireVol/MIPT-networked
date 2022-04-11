@@ -23,10 +23,12 @@ const int AI_SIZE = 10;
 
 uint32_t gen_color()
 {
+  //best shade count is 2^n + 1
+  const int shadeCount = 5;
   return 0xff000000 +
-         0x00ff0000 * (rand() % 10) * 0.1f +
-         0x0000ff00 * (rand() % 10) * 0.1f +
-         0x000000ff * (rand() % 10) * 0.1f;
+         0x00010000 * ((rand() % shadeCount) * 256 / (shadeCount - 1) - 1) +
+         0x00000100 * ((rand() % shadeCount) * 256 / (shadeCount - 1) - 1) +
+         0x00000001 * ((rand() % shadeCount) * 256 / (shadeCount - 1) - 1);
 }
 
 uint16_t gen_eid()
@@ -67,7 +69,8 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 
   // send info about new entity to everyone
   for (size_t i = 0; i < host->peerCount; ++i)
-    send_new_entity(&host->peers[i], ent);
+    if (host->peers[i]->state == ENET_PEER_STATE_CONNECTED)
+      send_new_entity(&host->peers[i], ent);
   // send info about controlled entity
   send_set_controlled_entity(peer, newEid);
 }
@@ -141,11 +144,13 @@ void collide()
         eMin.x = respawn.x;
         eMin.y = respawn.y;
         eMin.r = std::max(0.5f * eMin.r, 0.001f);
-        if (auto search = controlledMap.find(e1.eid); search != controlledMap.end())
+        if (auto search = controlledMap.find(e1.eid); search != controlledMap.end() &&
+                                                      search->second->state == ENET_PEER_STATE_CONNECTED)
         {
           send_snapshot(search->second, e1.eid, e1.x, e1.y, e1.r);
         }
-        if (auto search = controlledMap.find(e2.eid); search != controlledMap.end())
+        if (auto search = controlledMap.find(e2.eid); search != controlledMap.end() &&
+                                                      search->second->state == ENET_PEER_STATE_CONNECTED)
         {
           send_snapshot(search->second, e2.eid, e2.x, e2.y, e2.r);
         }
