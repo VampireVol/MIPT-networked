@@ -24,9 +24,9 @@ const int AI_SIZE = 10;
 uint32_t gen_color()
 {
   return 0xff000000 +
-         0x00440000 * (rand() % 5) +
-         0x00004400 * (rand() % 5) +
-         0x00000044 * (rand() % 5);
+         0x00ff0000 * (rand() % 10) * 0.1f +
+         0x0000ff00 * (rand() % 10) * 0.1f +
+         0x000000ff * (rand() % 10) * 0.1f;
 }
 
 uint16_t gen_eid()
@@ -45,6 +45,11 @@ Point2 gen_point()
   return { x, y };
 }
 
+float gen_r()
+{
+  return (rand() % 10 + 1) * 0.1f;
+}
+
 void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 {
   // send all entities
@@ -54,10 +59,11 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 
   uint16_t newEid = gen_eid();
   uint32_t color = gen_color();
+  Point2 p = gen_point();
   float x = (rand() % 4) * 2.f;
   float y = (rand() % 4) * 2.f;
-  float r = (rand() % 10 + 1) * 0.1f;
-  Entity ent = {color, x, y, r, newEid};
+  float r = gen_r();
+  Entity ent = {color, p.x, p.y, r, newEid};
   entities.push_back(ent);
 
   controlledMap[newEid] = peer;
@@ -90,7 +96,7 @@ void create_ai()
   {
     Point2 start = gen_point();
     Point2 next = gen_point();
-    float r = (rand() % 10 + 1) * 0.1f;
+    float r = gen_r();
     uint32_t color = gen_color();
     uint16_t newEid = gen_eid();
     Entity ent = {color, start.x, start.y, r, newEid};
@@ -106,7 +112,7 @@ void update_ai(float dt)
   {
     Entity e = entities[i];
     Point2 t = moveTo[i];
-    float speed = 0.1f / (e.r);
+    float speed = 10.f / (2.f + e.r * e.r);
     float dx = t.x - e.x;
     float dy = t.y - e.y;
     float dist = sqrt(dx * dx + dy * dy);
@@ -188,9 +194,9 @@ int main(int argc, const char **argv)
       }
     update_ai(dt);
     start = enet_time_get();
-    dt = (start - last) / 100.0f;
+    dt = (start - last) / 1000.0f;
     last = start;
-    usleep(1000);
+    usleep(10000);
   }
 
   enet_host_destroy(server);

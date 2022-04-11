@@ -137,7 +137,7 @@ int main(int argc, const char **argv)
       for (Entity &e : entities)
         if (e.eid == my_entity)
         {
-          float speed = 1.f / (e.r * e.r);
+          float speed = 10.f / (2.f + e.r * e.r);
           speed = (left || right) && (up || down) ? speed / sqrt(2) : speed;
           // Update
           e.x += ((left ? -dt : 0.f) + (right ? +dt : 0.f)) * speed;
