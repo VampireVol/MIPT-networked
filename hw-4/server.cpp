@@ -35,7 +35,8 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 
   // send info about new entity to everyone
   for (size_t i = 0; i < host->peerCount; ++i)
-    send_new_entity(&host->peers[i], ent);
+    if (host->peers[i].state == ENET_PEER_STATE_CONNECTED)
+      send_new_entity(&host->peers[i], ent);
   // send info about controlled entity
   send_set_controlled_entity(peer, newEid);
 }
@@ -74,6 +75,7 @@ int main(int argc, const char **argv)
   }
 
   uint32_t lastTime = enet_time_get();
+  uint32_t lastSendSnapshot = lastTime;
   while (true)
   {
     uint32_t curTime = enet_time_get();
@@ -109,13 +111,20 @@ int main(int argc, const char **argv)
       // simulate
       simulate_entity(e, dt);
       // send
-      for (size_t i = 0; i < server->peerCount; ++i)
+      if (curTime - lastSendSnapshot > 200)
       {
-        ENetPeer *peer = &server->peers[i];
-        // skip this here in this implementation
-        //if (controlledMap[e.eid] != peer)
-        send_snapshot(peer, e.eid, e.x, e.y, e.ori);
+        for (size_t i = 0; i < server->peerCount; ++i)
+        {
+          ENetPeer *peer = &server->peers[i];
+          if (peer->state == ENET_PEER_STATE_CONNECTED)
+            send_snapshot(peer, e.eid, e.x, e.y, e.ori);
+        }
       }
+    }
+    //reset time after all entity's send //fix that
+    if (curTime - lastSendSnapshot > 200)
+    {
+      lastSendSnapshot = curTime;
     }
     usleep(10000);
   }

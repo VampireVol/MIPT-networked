@@ -18,9 +18,69 @@
 #include "entity.h"
 #include "protocol.h"
 
+struct Snapshot
+{
+  Snapshot() {}
+  Snapshot(const Entity &e) : x(e.x), y(e.y), ori(e.ori), t(bx::getHPCounter()) {}
+  float x;
+  float y;
+  float ori;
+  int64_t t;
+};
 
 static std::vector<Entity> entities;
 static uint16_t my_entity = invalid_entity;
+static std::vector<std::vector<Snapshot>> history;
+static int offset = 0;
+static Snapshot moveTo;
+
+void addSnapshot(uint16_t eid, const Entity &e)
+{
+  if (history[eid].size() > 10)
+    history[eid].erase(history[eid].begin());
+  history[eid].push_back(Snapshot(e));
+}
+
+void checkOffset(float x, float y, float ori)
+{
+  float eps = 0.0001f;
+  for (Entity& e : entities)
+  {
+    if (e.eid == my_entity)
+    {
+      if (abs(e.x - x) > eps || abs(e.y - y) > eps || abs(e.ori - ori) > eps)
+      {
+        offset = 5;
+        moveTo.x = (x - e.x) / offset;
+        moveTo.y = (y - e.y) / offset;
+        moveTo.ori = (ori - e.ori) / offset;
+      }
+    }
+  }  
+}
+
+void getInterpolate(uint16_t uid, float &x, float &y, float &ori)
+{
+  const double freq = double(bx::getHPFrequency());
+  uint64_t now = bx::getHPCounter() - freq / 10;
+  uint32_t idx = 1;
+  if (history[uid].size() == 1)
+  {
+    x = history[uid][0].x;
+    y = history[uid][0].y;
+    ori = history[uid][0].ori;
+    return;
+  }
+  while (idx < history[uid].size() - 1 && now > history[uid][idx].t)
+  {
+    ++idx;
+  }
+  Snapshot l = history[uid][idx];
+  Snapshot p = history[uid][idx - 1];
+  x   = (l.x - p.x)     * (now - p.t) / double(l.t - p.t) + p.x;
+  y   = (l.y - p.y)     * (now - p.t) / double(l.t - p.t) + p.y;
+  ori = (l.ori - p.ori) * (now - p.t) / double(l.t - p.t) + p.ori;
+}
 
 void on_new_entity_packet(ENetPacket *packet)
 {
@@ -30,6 +90,7 @@ void on_new_entity_packet(ENetPacket *packet)
   for (const Entity &e : entities)
     if (e.eid == newEntity.eid)
       return; // don't need to do anything, we already have entity
+  history.push_back(std::vector<Snapshot>({ Snapshot(newEntity) }));
   entities.push_back(newEntity);
 }
 
@@ -47,9 +108,17 @@ void on_snapshot(ENetPacket *packet)
   for (Entity &e : entities)
     if (e.eid == eid)
     {
+      if (e.eid == my_entity)
+      {
+        checkOffset(x, y, ori);
+        return;
+      }
       e.x = x;
       e.y = y;
       e.ori = ori;
+      int idx = &e - &entities[0];
+      addSnapshot(idx, e);
+      //printf("%ld ", &e - &entities[0]);
     }
 }
 
@@ -79,8 +148,8 @@ int main(int argc, const char **argv)
     return 1;
   }
 
-  int width = 1920;
-  int height = 1080;
+  int width = 1280;
+  int height = 720;
   if (!app_init(width, height))
     return 1;
   ddInit();
@@ -100,6 +169,8 @@ int main(int argc, const char **argv)
   float dt = 0.f;
   while (!app_should_close())
   {
+    //printf("%d ", offset);
+    //offset++;
     ENetEvent event;
     while (enet_host_service(client, &event, 0) > 0)
     {
@@ -138,10 +209,21 @@ int main(int argc, const char **argv)
       for (Entity &e : entities)
         if (e.eid == my_entity)
         {
+          if (offset > 0)
+          {
+            e.x += moveTo.x;
+            e.y += moveTo.y;
+            e.ori += moveTo.ori;
+            --offset;
+          }
+          
           // Update
           float thr = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
           float steer = (left ? 1.f : 0.f) + (right ? -1.f : 0.f);
-
+          e.thr = thr;
+          e.steer = steer;
+          simulate_entity(e, dt);
+          
           // Send
           send_entity_input(serverPeer, my_entity, thr, steer);
         }
@@ -164,10 +246,23 @@ int main(int argc, const char **argv)
     for (const Entity &e : entities)
     {
       dde.push();
+        float x = 0.0f;
+        float y = 0.0f;
+        float ori = 0.0f;
+        if (e.eid == my_entity)
+        {
+          x = e.x;
+          y = e.y;
+          ori = e.ori;
+        }
+        else 
+        {
+          getInterpolate(&e - &entities[0], x, y, ori);
+        }       
 
         dde.setColor(e.color);
-        bx::Vec3 dir = {cosf(e.ori), sinf(e.ori), 0.f};
-        bx::Vec3 pos = {e.x, e.y, -0.01f};
+        bx::Vec3 dir = {cosf(ori), sinf(ori), 0.f};
+        bx::Vec3 pos = {x, y, -0.01f};
         dde.drawCapsule(sub(pos, dir), add(pos, dir), 1.f);
 
       dde.pop();
