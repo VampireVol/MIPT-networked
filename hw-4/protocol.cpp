@@ -9,24 +9,26 @@ void send_join(ENetPeer *peer)
   enet_peer_send(peer, 0, packet);
 }
 
-void send_new_entity(ENetPeer *peer, const Entity &ent)
+void send_new_entity(ENetPeer *peer, const Entity &ent, uint32_t t)
 {
-  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(Entity),
+  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(Entity) + sizeof(uint32_t),
                                                    ENET_PACKET_FLAG_RELIABLE);
   uint8_t *ptr = packet->data;
   *ptr = E_SERVER_TO_CLIENT_NEW_ENTITY; ptr += sizeof(uint8_t);
   memcpy(ptr, &ent, sizeof(Entity)); ptr += sizeof(Entity);
+  memcpy(ptr, &t, sizeof(uint32_t)); ptr += sizeof(uint32_t);
 
   enet_peer_send(peer, 0, packet);
 }
 
-void send_set_controlled_entity(ENetPeer *peer, uint16_t eid)
+void send_set_controlled_entity(ENetPeer *peer, uint16_t eid, uint32_t t)
 {
-  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t),
+  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint32_t),
                                                    ENET_PACKET_FLAG_RELIABLE);
   uint8_t *ptr = packet->data;
   *ptr = E_SERVER_TO_CLIENT_SET_CONTROLLED_ENTITY; ptr += sizeof(uint8_t);
   memcpy(ptr, &eid, sizeof(uint16_t)); ptr += sizeof(uint16_t);
+  memcpy(ptr, &t, sizeof(uint32_t)); ptr += sizeof(uint32_t);
 
   enet_peer_send(peer, 0, packet);
 }
@@ -45,10 +47,10 @@ void send_entity_input(ENetPeer *peer, uint16_t eid, float thr, float ori)
   enet_peer_send(peer, 1, packet);
 }
 
-void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori)
+void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori, uint32_t t)
 {
   ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t) +
-                                                   3 * sizeof(float),
+                                                   3 * sizeof(float) + sizeof(uint32_t),
                                                    ENET_PACKET_FLAG_UNSEQUENCED);
   uint8_t *ptr = packet->data;
   *ptr = E_SERVER_TO_CLIENT_SNAPSHOT; ptr += sizeof(uint8_t);
@@ -56,6 +58,7 @@ void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori)
   memcpy(ptr, &x, sizeof(float)); ptr += sizeof(float);
   memcpy(ptr, &y, sizeof(float)); ptr += sizeof(float);
   memcpy(ptr, &ori, sizeof(float)); ptr += sizeof(float);
+  memcpy(ptr, &t, sizeof(uint32_t)); ptr += sizeof(uint32_t);
 
   enet_peer_send(peer, 1, packet);
 }
@@ -65,16 +68,18 @@ MessageType get_packet_type(ENetPacket *packet)
   return (MessageType)*packet->data;
 }
 
-void deserialize_new_entity(ENetPacket *packet, Entity &ent)
+void deserialize_new_entity(ENetPacket *packet, Entity &ent, uint32_t &t)
 {
   uint8_t *ptr = packet->data; ptr += sizeof(uint8_t);
   ent = *(Entity*)(ptr); ptr += sizeof(Entity);
+  t = *(uint32_t*)(ptr); ptr += sizeof(uint32_t);
 }
 
-void deserialize_set_controlled_entity(ENetPacket *packet, uint16_t &eid)
+void deserialize_set_controlled_entity(ENetPacket *packet, uint16_t &eid, uint32_t& t)
 {
   uint8_t *ptr = packet->data; ptr += sizeof(uint8_t);
   eid = *(uint16_t*)(ptr); ptr += sizeof(uint16_t);
+  t = *(uint32_t*)(ptr); ptr += sizeof(uint32_t);
 }
 
 void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, float &steer)
@@ -85,12 +90,13 @@ void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, flo
   steer = *(float*)(ptr); ptr += sizeof(float);
 }
 
-void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &ori)
+void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &ori, uint32_t &t)
 {
   uint8_t *ptr = packet->data; ptr += sizeof(uint8_t);
   eid = *(uint16_t*)(ptr); ptr += sizeof(uint16_t);
   x = *(float*)(ptr); ptr += sizeof(float);
   y = *(float*)(ptr); ptr += sizeof(float);
   ori = *(float*)(ptr); ptr += sizeof(float);
+  t = *(uint32_t*)(ptr); ptr += sizeof(uint32_t);
 }
 
