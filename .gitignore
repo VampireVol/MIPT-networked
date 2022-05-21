@@ -37,5 +37,6 @@ bin/
 x64/
 x86/
 enet-1.3.17/
+Debug/
 
 *.user
