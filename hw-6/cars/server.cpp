@@ -6,9 +6,12 @@
 #include <stdlib.h>
 #include <vector>
 #include <map>
+#include <sstream>
+#include <iostream>
 
 static std::vector<Entity> entities;
 static std::map<uint16_t, ENetPeer*> controlledMap;
+static int port = 10131;
 
 uint32_t gen_color()
 {
@@ -61,8 +64,34 @@ void on_input(ENetPacket *packet)
     }
 }
 
+template <typename T>
+void read_arg(const char *str, T &out)
+{
+  std::istringstream ss(str);
+  T temp;
+  if (ss >> temp)
+    out = temp;
+  else
+    std::cerr << "Invalid number: " << str << std::endl;
+}
+
+void read_args(int argc, const char** argv)
+{
+  printf("count args: %d\n", argc);
+  if (argc > 1)
+  {
+    read_arg(argv[1], port);
+    read_arg(argv[2], forward_accel);
+    read_arg(argv[3], break_accel);
+    read_arg(argv[4], speed_rotation);
+    printf("get port: %d forward_accel: %f break_accel: %f speed_rotation: %f \n", port, forward_accel,
+           break_accel, speed_rotation);
+  }
+}
+
 int main(int argc, const char **argv)
 {
+  read_args(argc, argv);
   if (enet_initialize() != 0)
   {
     printf("Cannot init ENet");
@@ -71,7 +100,7 @@ int main(int argc, const char **argv)
   ENetAddress address;
 
   address.host = ENET_HOST_ANY;
-  address.port = 10131;
+  address.port = port;
 
   ENetHost *server = enet_host_create(&address, 32, 2, 0, 0);
 

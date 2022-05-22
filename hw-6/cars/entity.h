@@ -2,6 +2,11 @@
 #include <cstdint>
 
 constexpr uint16_t invalid_entity = -1;
+
+static float forward_accel = 12.0f;
+static float break_accel = 3.0f;
+static float speed_rotation = 0.3f;
+
 struct Entity
 {
   uint32_t color = 0xff00ffff;

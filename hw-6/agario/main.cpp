@@ -8,7 +8,8 @@
 #include <functional>
 #include "app.h"
 #include <enet/enet.h>
-#include <imgui/imgui.h>
+#include <sstream>
+#include <iostream>
 
 //for scancodes
 #include <GLFW/glfw3.h>
@@ -21,6 +22,8 @@
 
 static std::vector<Entity> entities;
 static uint16_t my_entity = invalid_entity;
+static int port = 10131;
+static float speedModif = 1.0f;
 
 void on_new_entity_packet(ENetPacket *packet)
 {
@@ -53,8 +56,31 @@ void on_snapshot(ENetPacket *packet)
     }
 }
 
+template <typename T>
+void read_arg(const char *str, T &out)
+{
+  std::istringstream ss(str);
+  T temp;
+  if (ss >> temp)
+    out = temp;
+  else
+    std::cerr << "Invalid number: " << str << std::endl;
+}
+
+void read_args(int argc, const char** argv)
+{
+  printf("count args: %d\n", argc);
+  if (argc > 1)
+  {
+    read_arg(argv[1], port);
+    read_arg(argv[2], speedModif);
+    printf("get port: %d speedModif: %f\n", port, speedModif);
+  }
+}
+
 int main(int argc, const char **argv)
 {
+  read_args(argc, argv);
   if (enet_initialize() != 0)
   {
     printf("Cannot init ENet");
@@ -70,7 +96,7 @@ int main(int argc, const char **argv)
 
   ENetAddress address;
   enet_address_set_host(&address, "localhost");
-  address.port = 10131;
+  address.port = port;
 
   ENetPeer *serverPeer = enet_host_connect(client, &address, 2, 0);
   if (!serverPeer)
@@ -138,7 +164,7 @@ int main(int argc, const char **argv)
       for (Entity &e : entities)
         if (e.eid == my_entity)
         {
-          float speed = e.GetSpeed();
+          float speed = e.GetSpeed() * speedModif;
           speed = (left || right) && (up || down) ? speed / sqrt(2) : speed;
           // Update
           e.x += ((left ? -dt : 0.f) + (right ? +dt : 0.f)) * speed;
@@ -181,8 +207,6 @@ int main(int argc, const char **argv)
     int64_t now = bx::getHPCounter();
     dt = (float)((now - last) / freq);
     last = now;
-
-    ImGui::Begin("Config");
   }
   ddShutdown();
   bgfx::shutdown();

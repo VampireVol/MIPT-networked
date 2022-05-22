@@ -9,6 +9,8 @@
 #include "app.h"
 #include <enet/enet.h>
 #include <math.h>
+#include <sstream>
+#include <iostream>
 
 //for scancodes
 #include <GLFW/glfw3.h>
@@ -46,6 +48,7 @@ static std::vector<std::vector<Snapshot>> history;
 static std::vector<Input> inputHistroy;
 static int offset = 0;
 static Snapshot moveTo;
+static int port;
 
 void addSnapshot(uint16_t eid, const Entity &e, uint32_t t)
 {
@@ -163,8 +166,34 @@ void on_snapshot(ENetPacket *packet)
   }
 }
 
+template <typename T>
+void read_arg(const char* str, T& out)
+{
+  std::istringstream ss(str);
+  T temp;
+  if (ss >> temp)
+    out = temp;
+  else
+    std::cerr << "Invalid number: " << str << std::endl;
+}
+
+void read_args(int argc, const char** argv)
+{
+  printf("count args: %d\n", argc);
+  if (argc > 1)
+  {
+    read_arg(argv[1], port);
+    read_arg(argv[2], forward_accel);
+    read_arg(argv[3], break_accel);
+    read_arg(argv[4], speed_rotation);
+    printf("get port: %d forward_accel: %f break_accel: %f speed_rotation: %f \n", port, forward_accel,
+      break_accel, speed_rotation);
+  }
+}
+
 int main(int argc, const char **argv)
 {
+  read_args(argc, argv);
   if (enet_initialize() != 0)
   {
     printf("Cannot init ENet");

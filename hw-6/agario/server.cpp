@@ -6,6 +6,8 @@
 #include <vector>
 #include <map>
 #include <math.h>
+#include <sstream>
+#include <iostream>
 
 struct Point2
 {
@@ -19,7 +21,13 @@ static std::vector<Point2> moveTo;
 
 const int WIGHT = 16;
 const int HEIGHT = 8;
-const int AI_SIZE = 10;
+
+static int port = 10131;
+static int aiSize = 10;
+static float minStartRadius = 0.1f;
+static float maxStartRadius = 1.0f;
+static float weightLoss = 0.5f;
+static float speedModif = 1.0f;
 
 uint32_t gen_color()
 {
@@ -49,7 +57,8 @@ Point2 gen_point()
 
 float gen_r()
 {
-  return (rand() % 10 + 1) * 0.1f;
+  return minStartRadius +
+         static_cast<float> (rand()) / (static_cast<float> (RAND_MAX / (maxStartRadius - minStartRadius)));
 }
 
 void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
@@ -69,7 +78,7 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 
   // send info about new entity to everyone
   for (size_t i = 0; i < host->peerCount; ++i)
-    if (host->peers[i]->state == ENET_PEER_STATE_CONNECTED)
+    if (host->peers[i].state == ENET_PEER_STATE_CONNECTED)
       send_new_entity(&host->peers[i], ent);
   // send info about controlled entity
   send_set_controlled_entity(peer, newEid);
@@ -91,7 +100,7 @@ void on_state(ENetPacket *packet)
 
 void create_ai()
 {
-  for (int i = 0; i < AI_SIZE; ++i)
+  for (int i = 0; i < aiSize; ++i)
   {
     Point2 start = gen_point();
     Point2 next = gen_point();
@@ -106,11 +115,11 @@ void create_ai()
 
 void update_ai(float dt)
 {
-  for (int i = 0; i < AI_SIZE; ++i)
+  for (int i = 0; i < aiSize; ++i)
   {
     Entity e = entities[i];
     Point2 t = moveTo[i];
-    float speed = e.GetSpeed();
+    float speed = e.GetSpeed() * speedModif;
     float dx = t.x - e.x;
     float dy = t.y - e.y;
     float dist = sqrt(dx * dx + dy * dy);
@@ -139,11 +148,11 @@ void collide()
       {
         Entity &eMin = e1.r < e2.r ? e1 : e2;
         Entity &eMax = e1.r < e2.r ? e2 : e1;
-        eMax.r += 0.5f * eMin.r;
+        eMax.r += weightLoss * eMin.r;
         Point2 respawn = gen_point();
         eMin.x = respawn.x;
         eMin.y = respawn.y;
-        eMin.r = std::max(0.5f * eMin.r, 0.001f);
+        eMin.r = std::max(weightLoss * eMin.r, 0.001f);
         if (auto search = controlledMap.find(e1.eid); search != controlledMap.end() &&
                                                       search->second->state == ENET_PEER_STATE_CONNECTED)
         {
@@ -157,11 +166,38 @@ void collide()
       }
     }
   }
+}
 
+template <typename T>
+void read_arg(const char *str, T &out)
+{
+  std::istringstream ss(str);
+  T temp;
+  if (ss >> temp)
+    out = temp;
+  else
+    std::cerr << "Invalid number: " << str << std::endl;
+}
+
+void read_args(int argc, const char** argv)
+{
+  printf("count args: %d\n", argc);
+  if (argc > 1)
+  {
+    read_arg(argv[1], port);
+    read_arg(argv[2], aiSize);
+    read_arg(argv[3], minStartRadius);
+    read_arg(argv[4], maxStartRadius);
+    read_arg(argv[5], weightLoss);
+    read_arg(argv[6], speedModif);
+    printf("get port: %d aiSize: %d minStartRadius: %f maxStartRadius: %f weightLoss: %f speedModif: %f \n", port, aiSize,
+           minStartRadius, maxStartRadius, weightLoss, speedModif);
+  }
 }
 
 int main(int argc, const char **argv)
 {
+  read_args(argc, argv);
   create_ai();
   if (enet_initialize() != 0)
   {
@@ -171,7 +207,7 @@ int main(int argc, const char **argv)
   ENetAddress address;
 
   address.host = ENET_HOST_ANY;
-  address.port = 10131;
+  address.port = port;
 
   ENetHost *server = enet_host_create(&address, 32, 2, 0, 0);
 
