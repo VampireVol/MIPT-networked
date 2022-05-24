@@ -5,6 +5,15 @@ mkdir lobby/bin
 mkdir agario/bin
 mkdir cars/bin
 ```
+# Запуск лобби-сервера и агента
+Для сборки и запуска лобби-сервера и агента используются следующие командыЖ
+```
+g++ lobby/lobby-server.cpp lobby/protocol.cpp -o lobby/bin/lobby-server -lenet
+g++ lobby/agent.cpp lobby/protocol.cpp -o lobby/bin/agent -lenet
+
+./lobby/bin/lobby-server
+./lobby/bin/agent
+```
 # Запуск северов
 Для сборки и запуска серверов agario и cars используется следющие команды:
 ```
