@@ -37,6 +37,9 @@
     <ClCompile Include="imgui_stdlib.cpp">
       <Filter>sources</Filter>
     </ClCompile>
+    <ClCompile Include="..\protocol.cpp">
+      <Filter>sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imconfig.h">

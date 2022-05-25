@@ -209,7 +209,7 @@ int main(int argc, const char **argv)
 
   ENetAddress address;
   enet_address_set_host(&address, "localhost");
-  address.port = 10131;
+  address.port = port;
 
   ENetPeer *serverPeer = enet_host_connect(client, &address, 2, 0);
   if (!serverPeer)

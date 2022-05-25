@@ -20,6 +20,15 @@ void send_login(ENetPeer *peer, const User &user)
   enet_peer_send(peer, 0, packet);
 }
 
+void send_user_id(ENetPeer *peer, uint16_t userId)
+{
+  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t), ENET_PACKET_FLAG_RELIABLE);
+  BitStream bs(packet->data);
+  bs.Write(E_LOBBY_SERVER_TO_LOBBY_CLIENT_USER_ID);
+  bs.Write(&userId);
+  enet_peer_send(peer, 0, packet);
+}
+
 void send_server_created(ENetPeer *peer, const ServerInfo &serverInfo)
 {
   ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(ServerInfo), ENET_PACKET_FLAG_RELIABLE);
@@ -118,6 +127,18 @@ void send_create_cars_room(ENetPeer *peer, const Room &room, const CarsSettings 
   enet_peer_send(peer, 0, packet);
 }
 
+void send_room_id(ENetPeer *peer, uint16_t roomId)
+{
+  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t),
+                                          ENET_PACKET_FLAG_RELIABLE);
+  BitStream bs(packet->data);
+  bs.Write(E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOM_ID);
+  bs.Write(&roomId);
+
+  enet_peer_send(peer, 0, packet);
+
+}
+
 void send_agario_server_settings(ENetPeer *peer, const AgarSettings &settings)
 {
   ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(AgarSettings), ENET_PACKET_FLAG_RELIABLE);
@@ -132,7 +153,7 @@ void send_cars_server_settings(ENetPeer *peer, const CarsSettings &settings)
 {
   ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(CarsSettings), ENET_PACKET_FLAG_RELIABLE);
   BitStream bs(packet->data);
-  bs.Write(E_LOBBY_SERVER_TO_AGENT_CREATE_AGAR_SERVER);
+  bs.Write(E_LOBBY_SERVER_TO_AGENT_CREATE_CARS_SERVER);
   bs.Write(&settings);
 
   enet_peer_send(peer, 0, packet);
@@ -148,19 +169,19 @@ void send_server_port(ENetPeer *peer, uint16_t port)
   enet_peer_send(peer, 0, packet);
 }
 
-void send_start(ENetPeer *peer, uint16_t id)
+void send_start(ENetPeer *peer, uint16_t roomId)
 {
   ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t), ENET_PACKET_FLAG_RELIABLE);
   BitStream bs(packet->data);
   bs.Write(E_LOBBY_CLIENT_TO_LOBBY_SERVER_START);
-  bs.Write(&id);
+  bs.Write(&roomId);
 
   enet_peer_send(peer, 0, packet);
 }
 
 void send_join(ENetPeer *peer, uint16_t userId, uint16_t roomId)
 {
-  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t), ENET_PACKET_FLAG_RELIABLE);
+  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + 2 * sizeof(uint16_t), ENET_PACKET_FLAG_RELIABLE);
   BitStream bs(packet->data);
   bs.Write(E_LOBBY_CLIENT_TO_LOBBY_SERVER_JOIN_ROOM);
   bs.Write(&userId);
@@ -171,7 +192,7 @@ void send_join(ENetPeer *peer, uint16_t userId, uint16_t roomId)
 
 void send_leave(ENetPeer *peer, uint16_t userId, uint16_t roomId)
 {
-  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t), ENET_PACKET_FLAG_RELIABLE);
+  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + 2 * sizeof(uint16_t), ENET_PACKET_FLAG_RELIABLE);
   BitStream bs(packet->data);
   bs.Write(E_LOBBY_CLIENT_TO_LOBBY_SERVER_LEAVE_ROOM);
   bs.Write(&userId);
@@ -180,10 +201,25 @@ void send_leave(ENetPeer *peer, uint16_t userId, uint16_t roomId)
   enet_peer_send(peer, 0, packet);
 }
 
+void send_refresh(ENetPeer *peer)
+{
+  ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t), ENET_PACKET_FLAG_RELIABLE);
+  BitStream bs(packet->data);
+  bs.Write(E_LOBBY_CLIENT_TO_LOBBY_SERVER_GET_ROOMS_LIST);
+
+  enet_peer_send(peer, 0, packet);
+}
+
 void deserialize_login(ENetPacket *packet, User &user)
 {
   BitStream bs(packet->data, packet->dataLength);
   bs.Read(&user);
+}
+
+void deserialize_user_id(ENetPacket *packet, uint16_t &userId)
+{
+  BitStream bs(packet->data, packet->dataLength);
+  bs.Read(&userId);
 }
 
 void deserialize_server_created(ENetPacket *packet, ServerInfo &serverInfo)
@@ -232,6 +268,7 @@ void deserialize_room_info_agar(ENetPacket *packet, Room &room, AgarSettings &se
     users.push_back(user);
   }
 }
+
 void deserialize_room_info_cars(ENetPacket *packet, Room &room, CarsSettings &settings, std::vector<User> &users)
 {
   uint32_t size;
@@ -261,6 +298,12 @@ void deserialize_create_cars_room(ENetPacket *packet, Room &room, CarsSettings &
   bs.Read(&settings);
 }
 
+void deserialize_room_id(ENetPacket *packet, uint16_t &roomId)
+{
+  BitStream bs(packet->data, packet->dataLength);
+  bs.Read(&roomId);
+}
+
 void deserialize_agario_server_settings(ENetPacket *packet, AgarSettings &settings)
 {
   BitStream bs(packet->data, packet->dataLength);
@@ -279,10 +322,10 @@ void deserialize_server_port(ENetPacket *packet, uint16_t &port)
   bs.Read(&port);
 }
 
-void deserialize_start(ENetPacket *packet, uint16_t &id)
+void deserialize_start(ENetPacket *packet, uint16_t &roomId)
 {
   BitStream bs(packet->data, packet->dataLength);
-  bs.Read(&id);
+  bs.Read(&roomId);
 }
 
 void deserialize_join(ENetPacket *packet, uint16_t &userId, uint16_t &roomId)

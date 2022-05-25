@@ -15,10 +15,10 @@
 #endif
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
 
-//#include "../protocol.h"
+#include "../protocol.h"
 //#include <stdio.h>
-//#include <windows.h>
-//#include <process.h>
+#include <windows.h>
+#include <process.h>
 
 
 // [Win32] Our example includes a copy of glfw3.lib pre-compiled with VS2010 to maximize ease of testing and compatibility with old VS compilers.
@@ -28,12 +28,320 @@
 #pragma comment(lib, "legacy_stdio_definitions")
 #endif
 
-static int port = 10131;
-//static std::vector<Room> rooms;
-//static std::vector<User> users;
-//static Room selectedRoom;
-//static AgarSettings agarSettings;
-//static CarsSettings carsSettings;
+static int portLobby = 10887;
+static std::vector<Room> rooms;
+static std::vector<User> users;
+static User user;
+static Room room;
+static AgarSettings agarSettings;
+static CarsSettings carsSettings;
+
+bool show_login_window = true;
+bool show_rooms_list_window = false;
+bool show_create_room_window = false;
+bool show_room_window = false;
+bool show_waiting = false;
+
+void enet_loop(ENetHost* client)
+{
+  ENetEvent event;
+  while (enet_host_service(client, &event, 0) > 0)
+  {
+    switch (event.type)
+    {
+    case ENET_EVENT_TYPE_CONNECT:
+      printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
+      break;
+    case ENET_EVENT_TYPE_RECEIVE:
+      switch (get_packet_type(event.packet))
+      {
+      case E_LOBBY_SERVER_TO_LOBBY_CLIENT_USER_ID:
+      {
+        deserialize_user_id(event.packet, user.id);
+        send_refresh(event.peer);
+        break;
+      }
+      case E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOM_ID:
+      {
+        deserialize_room_id(event.packet, room.id);
+        show_waiting = false;
+        show_room_window = true;
+        break;
+      }
+      case E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOMS_LIST:
+      {
+        rooms.clear();
+        deserialize_rooms_list(event.packet, rooms);
+        printf("rooms size %ld\n", rooms.size());
+        break;
+      }
+      case E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOM_INFO_AGAR:
+      {
+        users.clear();
+        deserialize_room_info_agar(event.packet, room, agarSettings, users);
+        show_waiting = false;
+        show_room_window = true;
+        break;
+      }
+      case E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOM_INFO_CARS:
+      {
+        users.clear();
+        deserialize_room_info_cars(event.packet, room, carsSettings, users);
+        show_waiting = false;
+        show_room_window = true;
+        break;
+      }
+      case E_LOBBY_SERVER_TO_LOBBY_CLIENT_USERS_LIST:
+      {
+        users.clear();
+        deserialize_users_list(event.packet, users);
+        break;
+      }
+      case E_LOBBY_SERVER_TO_LOBBY_CLIENT_SERVER_INFO:
+      {
+        uint16_t port;
+        deserialize_server_port(event.packet, port);
+        printf("try launch, port: %d", port);
+        printf("modif: %f", agarSettings.speedModif);
+        if (room.type == 0)
+        {
+          const std::string path = "../../../agario/x64/Debug/hw-6.exe";
+          _execl(path.c_str(), "go", std::to_string(port).c_str(),
+                 std::to_string(agarSettings.speedModif).c_str(), nullptr);
+        }
+        else
+        {
+          const std::string path = "../../../cars/x64/Debug/hw-6.exe";
+          _execl(path.c_str(), "go", std::to_string(port).c_str(),
+                 std::to_string(carsSettings.forwardAccel).c_str(),
+                 std::to_string(carsSettings.breakAccel).c_str(),
+                 std::to_string(carsSettings.speedRotation).c_str(), nullptr);
+        }
+        break;
+      }
+      };
+      printf("Packet received '%s'\n", event.packet->data);
+      break;
+    default:
+      break;
+    };
+  }
+}
+
+void ui_loop(ENetPeer* server)
+{
+  if (show_login_window)
+  {
+    ImGui::Begin("Login Window");
+    ImGui::InputText("Write your name", user.name, 32);
+    if (ImGui::Button("Login") && user.name[0] != '\0')
+    {
+      send_login(server, user);
+      show_login_window = false;
+      show_rooms_list_window = true;
+    }
+    ImGui::End();
+  }
+
+  if (show_waiting)
+  {
+    ImGuiWindowFlags window_flags = 0;
+
+    window_flags |= ImGuiWindowFlags_NoMove;
+    window_flags |= ImGuiWindowFlags_NoResize;
+    window_flags |= ImGuiWindowFlags_NoCollapse;
+    window_flags |= ImGuiWindowFlags_NoTitleBar;
+
+    ImGui::Begin("test", 0, window_flags);
+    ImGui::Text("Waiting...");
+    ImGui::End();
+  }
+
+  if (show_rooms_list_window)
+  {
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    ImGui::Begin("Rooms list");
+    static int selected = -1;
+    if (ImGui::BeginTable("Rooms list", 4))
+    {
+      ImGui::TableSetupColumn("Name");
+      ImGui::TableSetupColumn("Players");
+      ImGui::TableSetupColumn("Type");
+      ImGui::TableSetupColumn("Running");
+      ImGui::TableHeadersRow();
+      for (const auto& room : rooms)
+      {
+        
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGuiSelectableFlags selectable_flags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
+        if (ImGui::Selectable(room.name, room.id == selected, selectable_flags))
+        {
+          selected = room.id;
+        }
+        ImGui::TableNextColumn();
+        ImGui::Text("%d/%d", room.curPlayers, room.maxPlayers);
+        ImGui::TableNextColumn();
+        ImGui::Text(room.type == 0 ? "Agario" : "Cars");
+        ImGui::TableNextColumn();
+        ImGui::Text(room.running == 0 ? "Waiting" : "Running");
+      }
+      ImGui::EndTable();
+    }
+    if (selected != -1)
+    {
+      for (int i = 0; i < rooms.size(); ++i)
+      {
+        if (rooms[i].id == selected)
+        {
+          room = rooms[i];
+        }
+      }      
+    }
+    
+    if (ImGui::Button("Create room"))
+    {
+      show_rooms_list_window = false;
+      show_create_room_window = true;
+      strcpy(room.name, "");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Refresh"))
+    {
+      printf("send refresh\n");
+      send_refresh(server);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Join") && selected != -1)
+    {
+      show_rooms_list_window = false;
+      show_waiting = true;
+      send_join(server, user.id, room.id);
+    }
+    ImGui::End();
+  }
+
+  if (show_create_room_window)
+  {
+    constexpr float buttonSize = 50.0f;
+    ImGui::Begin("Create room");
+    auto windowSize = ImGui::GetWindowSize();
+    static int type = 0;
+    static int maxPlayers = 8;
+    ImGui::Text("Window size: %f, %f", windowSize.x, windowSize.y);
+    ImGui::InputText("Room name", room.name, 32);
+    ImGui::Combo("Type", &type, "Agar\0Cars\0\0");
+    ImGui::SliderInt("Max players", &maxPlayers, 1, 16);
+    room.type = static_cast<uint8_t>(type);
+    room.maxPlayers = static_cast<uint8_t>(maxPlayers);
+
+    if (type == 0) //Agar
+    {
+      static int botsCount;
+      static float minStartRadius = 0.1f;
+      static float maxStartRadius = 1.0f;
+      static float weightLoss = 0.5f;
+      static float speedModif = 1.0f;
+      ImGui::Text("Agar settings:");
+      ImGui::SliderInt("Bot's count", &botsCount, 0, 32);
+      ImGui::SliderFloat("Min start radius", &minStartRadius, 0.0f, 3.0f, "%.1f");
+      ImGui::SliderFloat("Max start radius", &maxStartRadius, 0.0f, 3.0f, "%.1f");
+      ImGui::SliderFloat("Weight loss", &weightLoss, 0.0f, 1.0f, "%.1f");
+      ImGui::SliderFloat("Speed modificator", &speedModif, 0.1f, 10.0f, "%.1f");
+      agarSettings.botsCount = static_cast<uint16_t>(botsCount);
+      agarSettings.minStartRadius = static_cast<float>(minStartRadius);
+      agarSettings.maxStartRadius = static_cast<float>(maxStartRadius);
+      agarSettings.weightLoss = static_cast<float>(weightLoss);
+      agarSettings.speedModif = static_cast<float>(speedModif);
+    }
+    else if (type == 1) //Cars
+    {
+      static float forwardAccel = 12.0f;
+      static float breakAccel = 3.0f;
+      static float speedRotation = 0.3f;
+      ImGui::Text("Cars settings:");
+      ImGui::SliderFloat("Forward accel", &forwardAccel, 0.0f, 30.0f, "%.1f");
+      ImGui::SliderFloat("Break accel", &breakAccel, 0.0f, 30.0f, "%.1f");
+      ImGui::SliderFloat("Speed rotation", &speedRotation, 0.0f, 1.0f, "%.1f");
+      carsSettings.forwardAccel = forwardAccel;
+      carsSettings.breakAccel = breakAccel;
+      carsSettings.speedRotation = speedRotation;
+    }
+    else
+    {
+      ImGui::Text("Something was wrong");
+    }
+    if (ImGui::Button("Create", { buttonSize , 0 }))
+    {
+      show_create_room_window = false;
+      show_waiting = true;
+      //users.push_back(user);
+      if (room.type == 0)
+      {
+        send_create_agar_room(server, room, agarSettings);
+      }
+      else if (room.type == 1)
+      {
+        send_create_cars_room(server, room, carsSettings);
+      }
+    }
+    ImGui::SameLine(windowSize.x - buttonSize - 10.0f);
+    if (ImGui::Button("Cancel"))
+    {
+      show_create_room_window = false;
+      show_rooms_list_window = true;
+      send_refresh(server);
+    }
+    ImGui::End();
+  }
+
+  if (show_room_window)
+  {
+    ImGui::Begin("Room");
+    ImGui::Text("Room info: %s players %d/%d", room.name, users.size(), room.maxPlayers);
+    if (room.type == 0)
+    {
+      ImGui::Text("Mode: agario. Params: botsCount = %d, minStartRadius = %f, maxStartRadius = %f, weightLoss = %f, speedModif = %f",
+                  agarSettings.botsCount, agarSettings.minStartRadius, agarSettings.maxStartRadius, 
+                  agarSettings.weightLoss, agarSettings.speedModif);
+    }
+    else
+    {
+      ImGui::Text("Mode: cars. Params: forwardAccel = %f, breakAccel = %f, speedRotation = %f",
+        carsSettings.forwardAccel, carsSettings.breakAccel, carsSettings.speedRotation);
+    }
+    ImGui::Text("Players list:");
+    static ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
+    static bool display_headers = false;
+    if (ImGui::BeginTable("table1", 1, flags))
+    {
+      for (const auto& user : users)
+      {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::Text(user.name);
+      }
+      ImGui::EndTable();
+    }
+    
+    if (ImGui::Button("Leave"))
+    {
+      //send req about leaving from room
+      send_leave(server, user.id, room.id);
+      send_refresh(server);
+      show_room_window = false;
+      show_rooms_list_window = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Start"))
+    {
+      send_start(server, room.id);
+    }
+    ImGui::End();
+  }
+}
 
 static void glfw_error_callback(int error, const char* description)
 {
@@ -47,7 +355,7 @@ int main(int, char**)
     printf("Cannot init ENet");
     return 1;
   }
-  /*
+  
   ENetHost* client = enet_host_create(nullptr, 1, 2, 0, 0);
   if (!client)
   {
@@ -57,14 +365,14 @@ int main(int, char**)
 
   ENetAddress address;
   enet_address_set_host(&address, "localhost");
-  address.port = port;
+  address.port = portLobby;
 
   ENetPeer* serverPeer = enet_host_connect(client, &address, 2, 0);
   if (!serverPeer)
   {
     printf("Cannot connect to server");
     return 1;
-  }*/
+  }
   // Setup window
   glfwSetErrorCallback(glfw_error_callback);
   if (!glfwInit())
@@ -133,67 +441,13 @@ int main(int, char**)
   // Our state
   bool show_demo_window = true;
   bool show_another_window = false;
-  bool show_login_window = true;
-  bool show_rooms_list_window = false;
-  bool show_create_room_window = false;
-  bool show_room_window = false;
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
   // Main loop
   while (!glfwWindowShouldClose(window))
   {
-    /*ENetEvent event;
-    while (enet_host_service(client, &event, 0) > 0)
-    {
-      switch (event.type)
-      {
-      case ENET_EVENT_TYPE_CONNECT:
-        printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
-        break;
-      case ENET_EVENT_TYPE_RECEIVE:
-        switch (get_packet_type(event.packet))
-        {
-        case E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOMS_LIST:
-        {
-          rooms.clear();
-          deserialize_rooms_list(event.packet, rooms);
-          break;
-        }
-        case E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOM_INFO_AGAR:
-        {
-          users.clear();
-          deserialize_room_info_agar(event.packet, selectedRoom, agarSettings, users);
-          break;
-        }
-        case E_LOBBY_SERVER_TO_LOBBY_CLIENT_ROOM_INFO_CARS:
-        {
-          users.clear();
-          deserialize_room_info_cars(event.packet, selectedRoom, carsSettings, users);
-          break;
-        }
-        case E_LOBBY_SERVER_TO_LOBBY_CLIENT_USERS_LIST:
-        {
-          users.clear();
-          deserialize_users_list(event.packet, users);
-          break;
-        }
-        case E_LOBBY_SERVER_TO_LOBBY_CLIENT_SERVER_INFO:
-        {
-          uint16_t port;
-          deserialize_server_port(event.packet, port);
-          if (selectedRoom.type == 0)
-          {
-            const std::string path = "../../../agario/x64/Debug/hw-6.exe";
-            _execl(path.c_str(), "", std::to_string(port).c_str(), std::to_string(agarSettings.speedModif).c_str(), nullptr);
-          }
-          break;
-        }
-        };
-        break;
-      default:
-        break;
-      };
-    }*/
+    enet_loop(client);
+
     // Poll and handle events (inputs, window resize, etc.)
     // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
     // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
@@ -243,107 +497,7 @@ int main(int, char**)
       ImGui::End();
     }
 
-    if (show_login_window)
-    {
-      static std::string userName;
-      ImGui::Begin("Login Window");
-      ImGui::InputText("Write your name", &userName);
-      if (ImGui::Button("Login") && !userName.empty())
-      {
-        show_login_window = false;
-        show_rooms_list_window = true;
-      }
-      ImGui::End();
-    }
-
-    if (show_rooms_list_window)
-    {
-      const ImGuiViewport* viewport = ImGui::GetMainViewport();
-      ImGui::SetNextWindowPos(viewport->WorkPos);
-      ImGui::SetNextWindowSize(viewport->WorkSize);
-      ImGui::Begin("Rooms list");
-      //table here
-      if (ImGui::Button("Create room"))
-      {
-        show_rooms_list_window = false;
-        show_create_room_window = true;
-      }
-      ImGui::SameLine();
-      if (ImGui::Button("Refresh"))
-      {
-        //send req to lobby-server
-      }
-      ImGui::SameLine();
-      if (ImGui::Button("Join"))
-      {
-        //send join to room with id to lobby-server
-        //if started go exec or go to room window
-      }
-      ImGui::End();
-    }
-
-    if (show_create_room_window)
-    {
-      constexpr float buttonSize = 50.0f;
-      //static RoomData data;
-      //static AgarSettings agar;
-      //static CarsSettings cars;
-      ImGui::Begin("Create room");
-      auto windowSize = ImGui::GetWindowSize();
-      ImGui::Text("Window size: %f, %f", windowSize.x, windowSize.y);
-      //ImGui::InputText("Room name", data.name, 32);
-      //ImGui::Combo("Type", &data.type, "Agar\0Cars\0\0");
-      //ImGui::SliderInt("Max players", &data.maxPlayers, 1, 16); //TODO: RETURN THIS
-      //if (data.type == 0) //Agar
-      //{
-      //  ImGui::Text("Agar settings:");
-      //  //ImGui::SliderInt("Bot's count", &agar.botsCount, 0, 32);
-      //  ImGui::SliderFloat("Min start radius", &agar.minStartRadius, 0.0f, 3.0f, "%.1f");
-      //  ImGui::SliderFloat("Max start radius", &agar.maxStartRadius, 0.0f, 3.0f, "%.1f");
-      //  ImGui::SliderFloat("Weight loss", &agar.weightLoss, 0.0f, 1.0f, "%.1f");
-      //  ImGui::SliderFloat("Speed modificator", &agar.speedModif, 0.1f, 10.0f, "%.1f");
-      //}
-      //else if (data.type == 1) //Cars
-      //{
-      //  ImGui::Text("Cars settings:");
-      //  ImGui::SliderFloat("Forward accel", &cars.forwardAccel, 0.0f, 30.0f, "%.1f");
-      //  ImGui::SliderFloat("Break accel", &cars.breakAccel, 0.0f, 30.0f, "%.1f");
-      //  ImGui::SliderFloat("Speed rotation", &cars.speedRotation, 0.0f, 1.0f, "%.1f");
-      //}
-      //else
-      //{
-      //  ImGui::Text("Something was wrong");
-      //}
-      if (ImGui::Button("Create", { buttonSize , 0 }))
-      {
-        show_create_room_window = false;
-        //send command for creating room to lobby-server
-      }
-      ImGui::SameLine(windowSize.x - buttonSize - 10.0f);
-      if (ImGui::Button("Cancel"))
-      {
-        show_create_room_window = false;
-        show_rooms_list_window = true;
-        //do refresh
-      }
-      ImGui::End();
-    }
-
-    if (show_room_window)
-    {
-      ImGui::Begin("Room");
-      ImGui::Text("Room info: ");
-      ImGui::Text("Players list:");
-      if (ImGui::Button("Leave"))
-      {
-        //send req about leaving from room
-        show_room_window = false;
-        show_rooms_list_window = true;
-      }
-      ImGui::SameLine();
-      ImGui::Button("Start");
-      ImGui::End();
-    }
+    ui_loop(serverPeer);
 
     // Rendering
     ImGui::Render();

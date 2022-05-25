@@ -49,15 +49,17 @@ void add_info(uint16_t id, uint16_t port, pid_t pid)
 
 void start_agario_server(uint16_t port, const AgarSettings &settings)
 {
-  const std::string path = "../../agario/bin/server";
+  const char *path = "agario/bin/server";
   pid_t pid;
   switch(pid=fork())
   {
     case 0:
       printf("This is child, starting agario\n");
-      execl(path.c_str(), "", std::to_string(port).c_str(), std::to_string(settings.botsCount).c_str(),
+      execl(path, "", std::to_string(port).c_str(), std::to_string(settings.botsCount).c_str(),
             std::to_string(settings.minStartRadius).c_str(), std::to_string(settings.maxStartRadius).c_str(),
             std::to_string(settings.weightLoss).c_str(), std::to_string(settings.speedModif).c_str(), nullptr);
+      printf("ops\n");
+      break;
     default:
       printf("I'm parent, my child: %d\n", pid);
       add_info(settings.id, port, pid);
@@ -66,14 +68,15 @@ void start_agario_server(uint16_t port, const AgarSettings &settings)
 
 void start_cars_server(uint16_t port, const CarsSettings &settings)
 {
-  const std::string path = "../../cars/bin/server";
+  const std::string path = "cars/bin/server";
   pid_t pid;
   switch(pid=fork())
   {
     case 0:
-      printf("This is child, starting cars\n");
+      printf("This is child, starting cars port: %d\n", port);
       execl(path.c_str(), "", std::to_string(port).c_str(), std::to_string(settings.forwardAccel).c_str(),
             std::to_string(settings.breakAccel).c_str(), std::to_string(settings.speedRotation).c_str(), nullptr);
+      break;
     default:
       printf("I'm parent, my child: %d\n", pid);
       add_info(settings.id, port, pid);

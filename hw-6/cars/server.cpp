@@ -11,7 +11,7 @@
 
 static std::vector<Entity> entities;
 static std::map<uint16_t, ENetPeer*> controlledMap;
-static int port = 10131;
+static int port = 10132;
 
 uint32_t gen_color()
 {
@@ -101,7 +101,7 @@ int main(int argc, const char **argv)
 
   address.host = ENET_HOST_ANY;
   address.port = port;
-
+  printf("Pre create server! Port: %d\n", port);
   ENetHost *server = enet_host_create(&address, 32, 2, 0, 0);
 
   if (!server)
@@ -109,6 +109,7 @@ int main(int argc, const char **argv)
     printf("Cannot create ENet server\n");
     return 1;
   }
+  printf("Crars server start! Port: %d\n", port);
 
   uint32_t lastTime = enet_time_get();
   uint32_t lastSendSnapshot = lastTime;

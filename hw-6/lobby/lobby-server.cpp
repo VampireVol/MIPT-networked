@@ -9,12 +9,32 @@ const int LOBBY_SERVER_PORT = 10887;
 const int MAX_PEERS = 32;
 
 static uint16_t curRoomId = 1;
+static uint16_t curUserId = 1;
 
 static std::vector<User> users;
 static std::vector<Room> rooms;
 static std::vector<AgarSettings> agarSettings;
 static std::vector<CarsSettings> carsSettings;
 static std::vector<ServerInfo> serverInfos;
+static Room emptyR;
+static User emptyU;
+static AgarSettings emptyA;
+static CarsSettings emptyC;
+
+struct UserInfo
+{
+  uint16_t id;
+};
+
+uint16_t get_user_id()
+{
+  return curUserId++;
+}
+
+uint16_t get_room_id()
+{
+  return curRoomId++;
+}
 
 User& find_user(uint16_t id)
 {
@@ -24,6 +44,7 @@ User& find_user(uint16_t id)
       return user;
   }
   printf("Can't find user gg");
+  return emptyU;
 }
 
 Room& find_room(uint16_t id)
@@ -34,6 +55,7 @@ Room& find_room(uint16_t id)
       return room;
   }
   printf("Can't find room gg");
+  return emptyR;
 }
 
 uint16_t find_port(uint16_t id)
@@ -44,6 +66,7 @@ uint16_t find_port(uint16_t id)
       return info.port;
   }
   printf("Can't find port gg");
+  return 0;
 }
 
 const AgarSettings& find_agar_settings(uint16_t id)
@@ -54,6 +77,7 @@ const AgarSettings& find_agar_settings(uint16_t id)
       return settings;
   }
   printf("Can't find agar settings gg");
+  return emptyA;
 }
 
 const CarsSettings& find_cars_settings(uint16_t id)
@@ -64,16 +88,19 @@ const CarsSettings& find_cars_settings(uint16_t id)
       return settings;
   }
   printf("Can't find cars settings gg");
+  return emptyC;
 }
 
 void send_user_list(uint16_t roomId, ENetPeer *peers, ENetPeer *sender)
 {
+  printf("try send list\n");
   std::vector<User> sendUsers;
   for (const auto &user : users)
   {
     if (user.roomId == roomId)
       sendUsers.push_back(user);
   }
+  printf("send users list, size: %ld", sendUsers.size());
   if (sender)
   {
     auto room = find_room(roomId);
@@ -97,18 +124,20 @@ void send_user_list(uint16_t roomId, ENetPeer *peers, ENetPeer *sender)
   }
   for (const auto &user : sendUsers)
   {
-    for (const auto &peer : connectedPeers)
+    for (int i = 0; i < connectedPeers.size(); ++i)
     {
-      User *data = (User *) peer->data;
+      const UserInfo *data = (UserInfo *) connectedPeers[i]->data;
+      if (!data)
+        continue;
       if (sender)
       {
-        User *dataSender = (User *) sender->data;
+        const UserInfo *dataSender = (UserInfo *) sender->data;
         if (user.id == data->id && dataSender->id != data->id)
-          send_users_list(peer, sendUsers);
+          send_users_list(connectedPeers[i], sendUsers);
       }
       else
         if (user.id == data->id)
-          send_users_list(peer, sendUsers);
+          send_users_list(connectedPeers[i], sendUsers);
     }
   }
 }
@@ -121,26 +150,44 @@ void send_port(ENetPeer *peers, uint16_t port, uint16_t roomId)
     if (peers[i].state == ENET_PEER_STATE_CONNECTED)
     {
       connectedPeers.push_back(&peers[i]);
+      UserInfo *data = (UserInfo *) peers[i].data;
+      if (data)
+        printf("sending port to: Peer %d, id %d\n", i, data->id);
     }
   }
   for (const auto &peer : connectedPeers)
   {
-    User *data = (User *) peer->data;
-    if (data->roomId == roomId)
+    const UserInfo *data = (UserInfo *) peer->data;
+    if (!data)
+      continue;
+    User &user = find_user(data->id);
+    if (user.roomId == roomId)
       send_server_port(peer, port);
   }
 }
 
 void message_receive(const ENetEvent &event, ENetPeer *peers, ENetPeer *agent)
 {
+  printf("catch!\n");
   switch (get_packet_type(event.packet))
   {
     case E_LOBBY_CLIENT_TO_LOBBY_SERVER_LOGIN:
     {
       User user;
       deserialize_login(event.packet, user);
+      user.id = get_user_id();
       users.push_back(user);
-      event.peer->data = &users[users.size() - 1];
+      event.peer->data = new UserInfo({ user.id });
+      send_user_id(event.peer, user.id);
+      for (int i = 0; i < MAX_PEERS; ++i)
+      {
+        if (peers[i].state == ENET_PEER_STATE_CONNECTED)
+        {
+          UserInfo *data = (UserInfo *) peers[i].data;
+          if (data)
+            printf("Peer %d, id %d\n", i, data->id);
+        }
+      }
       break;
     }
     case E_LOBBY_CLIENT_TO_LOBBY_SERVER_JOIN_ROOM:
@@ -152,7 +199,7 @@ void message_receive(const ENetEvent &event, ENetPeer *peers, ENetPeer *agent)
       user.roomId = roomId;
       auto &room = find_room(roomId);
       room.curPlayers++;
-      if (room.running)
+      if (room.running == 1)
       {
         if (room.type == 0)
         {
@@ -210,9 +257,18 @@ void message_receive(const ENetEvent &event, ENetPeer *peers, ENetPeer *agent)
       Room room;
       AgarSettings settings;
       deserialize_create_agar_room(event.packet, room, settings);
+      room.id = get_room_id();
+
+      const UserInfo *data = (UserInfo *) event.peer->data;
+
+      User &user = find_user(data->id);
+      user.roomId = room.id;
+      settings.id = room.id;
       room.curPlayers++;
       rooms.push_back(room);
       agarSettings.push_back(settings);
+      send_room_id(event.peer, room.id);
+      send_user_list(room.id, peers, event.peer);
       break;
     }
     case E_LOBBY_CLIENT_TO_LOBBY_SERVER_CREATE_CARS_ROOM:
@@ -220,9 +276,16 @@ void message_receive(const ENetEvent &event, ENetPeer *peers, ENetPeer *agent)
       Room room;
       CarsSettings settings;
       deserialize_create_cars_room(event.packet, room, settings);
+      room.id = get_room_id();
+      const UserInfo *data = (UserInfo *) event.peer->data;
+      User &user = find_user(data->id);
+      user.roomId = room.id;
+      settings.id = room.id;
       room.curPlayers++;
       rooms.push_back(room);
       carsSettings.push_back(settings);
+      send_room_id(event.peer, room.id);
+      send_user_list(room.id, peers, event.peer);
       break;
     }
     case E_AGENT_TO_LOBBY_SERVER_SERVER_CREATED:
@@ -232,7 +295,8 @@ void message_receive(const ENetEvent &event, ENetPeer *peers, ENetPeer *agent)
       serverInfos.push_back(info);
       Room &room = find_room(info.id);
       room.running = 1;
-      send_port(peers, info.port, room.id);
+      printf("server created id: %d port: %d\n", info.id, info.port);
+      send_port(peers, info.port, info.id);
     }
 
   }
