@@ -1,12 +1,12 @@
 # Этап подготовки
-Создайте папки bin для исполняемых файлов серверов.
+Создайте папки bin для исполняемых файлов серверов
 ```
 mkdir lobby/bin
 mkdir agario/bin
 mkdir cars/bin
 ```
 # Запуск лобби-сервера и агента
-Для сборки и запуска лобби-сервера и агента используются следующие командыЖ
+Для сборки и запуска лобби-сервера и агента используются следующие команды
 ```
 g++ lobby/lobby-server.cpp lobby/protocol.cpp -o lobby/bin/lobby-server -lenet
 g++ lobby/agent.cpp lobby/protocol.cpp -o lobby/bin/agent -lenet
